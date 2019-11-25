@@ -1,0 +1,131 @@
+apiVersion: tekton.dev/v1alpha1
+kind: Task
+metadata:
+  name: build-docker-image-from-git-source
+spec:
+  volumes:
+    - name: encryption-keys
+      secret: 
+        secretName: enc-key
+    - name: trivy-cache
+      hostPath:
+          path: /mnt/sda1/trivy-cache # TODO Change this to a usable location on disk with some space (this works for certain versions of minikube since it is the mount point of the disk)
+          type: DirectoryOrCreate
+  inputs:
+    resources:
+      - name: docker-source
+        type: git
+    params:
+      - name: pathToDockerFile
+        type: string
+        description: The path to the dockerfile to build
+        default: /workspace/docker-source/Dockerfile
+      - name: pathToRequirementsTxt
+        type: string
+        description: The path to the requirements.txt
+        default: /workspace/docker-source/requirements.txt
+      - name: pathToContext
+        type: string
+        description:
+          The build context used by Kaniko
+          (https://github.com/GoogleContainerTools/kaniko#kaniko-build-contexts)
+        default: /workspace/docker-source
+  outputs:
+    resources:
+      - name: builtImage
+        type: image
+  steps:
+    - name: python-lib-safety
+      image: lumjjb/safety-docker:latest
+      command:
+        - safety
+      args:
+        - check
+        - -r
+        - $(inputs.params.pathToRequirementsTxt)
+
+    - name: dockerfile-lint
+      image: hadolint/hadolint
+      command:
+        - hadolint
+      args:
+        - -f 
+        - json
+        - $(inputs.params.pathToContext)/$(inputs.params.pathToDockerFile)
+
+    - name: build
+      image: gcr.io/kaniko-project/executor:v0.13.0
+      # specifying DOCKER_CONFIG is required to allow kaniko to detect docker credential
+      env:
+        - name: "DOCKER_CONFIG"
+          value: "/builder/home/.docker/"
+      command:
+        - /kaniko/executor
+      args:
+        - --dockerfile=$(inputs.params.pathToDockerFile)
+        - --no-push
+        - --oci-layout-path=/workspace/outputs/$(outputs.resources.builtImage.name)
+        - --context=$(inputs.params.pathToContext)
+
+    - name: copy-to-docker-archive
+      image: lumjjb/seccont-tools:0.1
+      command:
+        - /skopeo
+      args:
+        - copy
+        - oci:/workspace/outputs/$(outputs.resources.builtImage.name)
+        - docker-archive:/workspace/outputs/$(outputs.resources.builtImage.name).tar
+    - name: image-scan
+      image: aquasec/trivy
+      volumeMounts:
+        - name: trivy-cache
+          mountPath: /root/.cache/
+      command:
+        - trivy
+      args:
+        - --skip-update
+        - --exit-code
+        - "1"
+        - --cache-dir
+        - /root/.cache/trivy
+        - --input
+        - /workspace/outputs/$(outputs.resources.builtImage.name).tar
+
+    - name: encrypt
+      image: lumjjb/seccont-tools:0.1
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: encryption-keys
+          mountPath: /keys
+          readOnly: true
+      command:
+        - /bin/bash
+      args:
+        - -c
+        - /skopeo copy oci:/workspace/outputs/$(outputs.resources.builtImage.name) oci:/workspace/outputs/$(outputs.resources.builtImage.name)-copy 
+          && /skopeo copy --encryption-key jwe:/keys/public.key oci:/workspace/outputs/$(outputs.resources.builtImage.name)-copy oci:/workspace/outputs/$(outputs.resources.builtImage.name)-encrypted 
+          && rm -rf /workspace/outputs/$(outputs.resources.builtImage.name) && mv /workspace/outputs/$(outputs.resources.builtImage.name)-encrypted /workspace/outputs/$(outputs.resources.builtImage.name)
+
+    - name: push
+      image: lumjjb/seccont-tools:0.1
+      imagePullPolicy: Always
+      command:
+        - /bin/bash
+      args:
+        - -c
+        - /skopeo copy --dest-tls-verify=false  oci:/workspace/outputs/$(outputs.resources.builtImage.name) docker://$(outputs.resources.builtImage.url)
+
+#    - name: inspect
+#      image: lumjjb/seccont-tools:0.1
+#      imagePullPolicy: Always
+#      volumeMounts:
+#        - name: encryption-keys
+#          mountPath: /keys
+#          readOnly: true
+#        - name: trivy-cache
+#          mountPath: /root/.cache/
+#      command:
+#        - /bin/bash
+#      args:
+#        - -c
+#        - while true; do sleep 10; echo sleeping; done

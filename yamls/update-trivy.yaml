@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: trivy-update
+  labels:
+    app: trivy-update
+spec:
+  selector:
+    matchLabels:
+      app: trivy-update
+  template:
+    metadata:
+      labels:
+        app: trivy-update
+    spec:
+      volumes:
+        - name: trivy-cache
+          hostPath:
+              path: /mnt/sda1/trivy-cache # TODO Change this to a usable location on disk with some space (this works for certain versions of minikube since it is the mount point of the disk)
+              type: DirectoryOrCreate
+      containers:
+        - name: aquasec-update
+          volumeMounts:
+            - name: trivy-cache
+              mountPath: /root/.cache/
+          image: aquasec/trivy
+          imagePullPolicy: Always
+          command: [ "/bin/sh", "-c" ,"while true; do trivy --download-db-only; echo 'updated db'; sleep 1000; done"]

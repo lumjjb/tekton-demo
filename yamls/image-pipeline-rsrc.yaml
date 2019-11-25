@@ -1,0 +1,9 @@
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: python-app-image
+spec:
+  type: image
+  params:
+    - name: url
+      value: registry.default.svc.cluster.local:5000/python-app:encrypted
