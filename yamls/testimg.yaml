@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: seccont-tools
+  labels:
+    app: cat-demo
+spec:
+  containers:
+    - name: seccont-tools
+      image: lumjjb/seccont-tools:0.1
+      imagePullPolicy: Always
+      command: [ "/bin/bash", "-c", "--" ]
+      args: [ "while true; do cat /mydata; sleep 5; done;" ]
