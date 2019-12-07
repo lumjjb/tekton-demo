@@ -114,18 +114,3 @@ spec:
       args:
         - -c
         - /skopeo copy --dest-tls-verify=false  oci:/workspace/outputs/$(outputs.resources.builtImage.name) docker://$(outputs.resources.builtImage.url)
-
-#    - name: inspect
-#      image: lumjjb/seccont-tools:0.1
-#      imagePullPolicy: Always
-#      volumeMounts:
-#        - name: encryption-keys
-#          mountPath: /keys
-#          readOnly: true
-#        - name: trivy-cache
-#          mountPath: /root/.cache/
-#      command:
-#        - /bin/bash
-#      args:
-#        - -c
-#        - while true; do sleep 10; echo sleeping; done
