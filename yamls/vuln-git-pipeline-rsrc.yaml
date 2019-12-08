@@ -1,11 +1,11 @@
 apiVersion: tekton.dev/v1alpha1
 kind: PipelineResource
 metadata:
-  name: python-app-git
+  name: vuln-python-app-git
 spec:
   type: git
   params:
     - name: revision
-      value: master
+      value: vulnerable_img
     - name: url
       value: https://github.com/lumjjb/sample-python-app
